@@ -16,14 +16,13 @@ import json
 import os
 import sys
 
-# Add the project root to sys.path to allow importing brand_aligner_agent
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
 import vertexai
 from dotenv import load_dotenv
 from vertexai import agent_engines
 
-from brand_aligner_agent.agent import root_agent
+# Add the project root to sys.path to allow importing brand_aligner_agent
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from brand_aligner_agent.agent import root_agent  # noqa: E402
 
 load_dotenv(override=True)
 PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT")
@@ -43,11 +42,11 @@ adk_app = agent_engines.AdkApp(
 )
 
 if os.path.exists(".agent_engine_resource.json"):
-  with open(".agent_engine_resource.json", "r") as f:
-    app_resource_data = json.load(f)
-    existing_resource_name = app_resource_data.get("resource_name")
+    with open(".agent_engine_resource.json") as f:
+        app_resource_data = json.load(f)
+        existing_resource_name = app_resource_data.get("resource_name")
 else:
-  existing_resource_name = None
+    existing_resource_name = None
 
 common_args = dict(
     agent_engine=adk_app,
@@ -102,21 +101,21 @@ common_args = dict(
 )
 
 if existing_resource_name:
-  print(f"Updating existing Agent Engine resource: {existing_resource_name}")
-  remote_app = agent_engines.update(
-      resource_name=existing_resource_name,
-      **common_args,
-  )
+    print(f"Updating existing Agent Engine resource: {existing_resource_name}")
+    remote_app = agent_engines.update(
+        resource_name=existing_resource_name,
+        **common_args,
+    )
 else:
-  print("Creating new Agent Engine resource")
-  remote_app = agent_engines.create(
-      **common_args,
-  )
+    print("Creating new Agent Engine resource")
+    remote_app = agent_engines.create(
+        **common_args,
+    )
 
 print("Deployment finished!")
 
 app_resource_data = {"resource_name": remote_app.resource_name}
 with open(".agent_engine_resource.json", "w") as f:
-  json.dump(app_resource_data, f, indent=2)
+    json.dump(app_resource_data, f, indent=2)
 
 print(f"Resource Name: {remote_app.resource_name}")

@@ -17,7 +17,6 @@ import json
 import logging
 import os
 import re
-from typing import Optional
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -55,187 +54,194 @@ before or after the JSON.
 
 
 def _text_progress_bar(percent: float, length: int = 20) -> str:
-  """Generates a compact text-based progress bar."""
-  if not (0 <= percent <= 100 and isinstance(length, int) and length > 0):
-    logger.error("Invalid percent or length for progress bar")
-    if percent < 0:
-      percent = 0
-    elif percent > 100:
-      percent = 100
-    if not isinstance(length, int) or length < 0:
-      length = 20
-  filled_len = int(length * percent / 100)
-  return f"[{'\u2588' * filled_len}{'\u2591' * (length - filled_len)}]"
+    """Generates a compact text-based progress bar."""
+    if not (0 <= percent <= 100 and isinstance(length, int) and length > 0):
+        logger.error("Invalid percent or length for progress bar")
+        if percent < 0:
+            percent = 0
+        elif percent > 100:
+            percent = 100
+        if not isinstance(length, int) or length < 0:
+            length = 20
+    filled_len = int(length * percent / 100)
+    return f"[{'\u2588' * filled_len}{'\u2591' * (length - filled_len)}]"
 
 
 def after_model_callback(
     callback_context: CallbackContext, llm_response: LlmResponse
-) -> Optional[LlmResponse]:
-  """Appends a progress bar to the agent's response."""
-  original_text = ""
-  if llm_response.content and llm_response.content.parts:
-    # We assume text is in the first part or at least one part has text.
-    # For simplicity, we grab the first text part.
-    for part in llm_response.content.parts:
-      if part.text:
-        original_text = part.text
-        break
+) -> LlmResponse | None:
+    """Appends a progress bar to the agent's response."""
+    original_text = ""
+    if llm_response.content and llm_response.content.parts:
+        # We assume text is in the first part or at least one part has text.
+        # For simplicity, we grab the first text part.
+        for part in llm_response.content.parts:
+            if part.text:
+                original_text = part.text
+                break
 
-    if not original_text:
-      return None
-  else:
-    return None
+        if not original_text:
+            return None
+    else:
+        return None
 
-  # Calculate progress based on processed items
-  state = callback_context.session.state
+    # Calculate progress based on processed items
+    state = callback_context.session.state
 
-  guideline_files = state.get("guideline_files", [])
-  asset_files = state.get("asset_files", [])
-  processed_guidelines = state.get("processed_guidelines", [])
-  evaluation_results = state.get("evaluation_results", [])
+    guideline_files = state.get("guideline_files", [])
+    asset_files = state.get("asset_files", [])
+    processed_guidelines = state.get("processed_guidelines", [])
+    evaluation_results = state.get("evaluation_results", [])
 
-  num_guidelines = len(guideline_files)
-  num_assets = len(asset_files)
-  num_processed_guidelines = len(processed_guidelines)
-  num_evaluated_assets = len(evaluation_results)
+    num_guidelines = len(guideline_files)
+    num_assets = len(asset_files)
+    num_processed_guidelines = len(processed_guidelines)
+    num_evaluated_assets = len(evaluation_results)
 
-  # Weights: Guideline = 1, Asset = 2
-  total_weight = (num_guidelines*1) + (num_assets*2)
-  current_weight = (num_processed_guidelines*1) + (num_evaluated_assets*2)
+    # Weights: Guideline = 1, Asset = 2
+    total_weight = (num_guidelines * 1) + (num_assets * 2)
+    current_weight = (num_processed_guidelines * 1) + (num_evaluated_assets * 2)
 
-  progress = 0
-  if total_weight > 0:
-    progress = (current_weight/total_weight) * 100
+    progress = 0
+    if total_weight > 0:
+        progress = (current_weight / total_weight) * 100
 
-  # Cap at 100
-  if progress > 100:
-    progress = 100
+    # Cap at 100
+    if progress > 100:
+        progress = 100
 
-  # If summarizer agent is active, we are effectively done or almost done.
-  if callback_context.agent_name == "summarizer_agent":
-    progress = 100
+    # If summarizer agent is active, we are effectively done or almost done.
+    if callback_context.agent_name == "summarizer_agent":
+        progress = 100
 
-  prog_bar = _text_progress_bar(progress, 30)
+    prog_bar = _text_progress_bar(progress, 30)
 
-  update = f"""
+    update = f"""
 {prog_bar}
 
 {original_text}
 """
 
-  # Update the first text part found
-  for part in llm_response.content.parts:
-    if part.text:
-      part.text = update
-      break
+    # Update the first text part found
+    for part in llm_response.content.parts:
+        if part.text:
+            part.text = update
+            break
 
-  return None
-
-
-async def generate_radar_chart(evaluation: AssetEvaluation) -> Optional[bytes]:
-  """Generates a detailed radar chart for the asset evaluation."""
-
-  # 1. Collect all unique categories from the evaluation verdicts, ignoring n/a
-  raw_categories = {
-      verdict.category
-      for gv in evaluation.guideline_verdicts
-      for verdict in gv.verdicts
-      if verdict.category and verdict.verdict.lower() != "n/a"
-  }
-  if not raw_categories:
     return None
 
-  # 2. Use LLM to group them into Master Categories
-  category_mapping = {cat: cat for cat in raw_categories}
-  if len(raw_categories) > 10:
-    try:
-      logger.info(
-          "Grouping categories for radar chart using LLM... Current categories: %r",
-          list(raw_categories),
-      )
-      client = genai.Client(
-          vertexai=True, project=PROJECT_ID, location=LOCATION
-      )
-      prompt = RADAR_CHART_GROUPING_PROMPT.format(
-          categories=list(raw_categories)
-      )
 
-      response = await client.aio.models.generate_content(
-          model=MODEL_NAME,
-          contents=prompt,
-          config={"response_mime_type": "application/json"},
-      )
+async def generate_radar_chart(evaluation: AssetEvaluation) -> bytes | None:
+    """Generates a detailed radar chart for the asset evaluation."""
+    # 1. Collect all unique categories from the evaluation verdicts, ignoring n/a
+    raw_categories = {
+        verdict.category
+        for gv in evaluation.guideline_verdicts
+        for verdict in gv.verdicts
+        if verdict.category and verdict.verdict.lower() != "n/a"
+    }
+    if not raw_categories:
+        return None
 
-      if response.parsed:
-        if isinstance(response.parsed, dict):
-          category_mapping = response.parsed
-        else:
-          category_mapping = json.loads(response.text)
-      else:
-        clean_text = re.sub(
-            r"(.*```json|```.*)", "", response.text.strip(), flags=re.DOTALL
-        )
-        category_mapping = json.loads(clean_text)
+    # 2. Use LLM to group them into Master Categories
+    category_mapping = {cat: cat for cat in raw_categories}
+    if len(raw_categories) > 10:
+        try:
+            logger.info(
+                "Grouping categories for radar chart using LLM... Current categories: %r",
+                list(raw_categories),
+            )
+            client = genai.Client(
+                vertexai=True, project=PROJECT_ID, location=LOCATION
+            )
+            prompt = RADAR_CHART_GROUPING_PROMPT.format(
+                categories=list(raw_categories)
+            )
 
-      logger.info(f"Radar Chart Category Mapping: {category_mapping}")
+            response = await client.aio.models.generate_content(
+                model=MODEL_NAME,
+                contents=prompt,
+                config={"response_mime_type": "application/json"},
+            )
 
-    except Exception as e:
-      logger.error(
-          f"Error grouping categories for radar chart: {e}. Falling back to raw categories."
-      )
+            if response.parsed:
+                if isinstance(response.parsed, dict):
+                    category_mapping = response.parsed
+                else:
+                    category_mapping = json.loads(response.text)
+            else:
+                clean_text = re.sub(
+                    r"(.*```json|```.*)",
+                    "",
+                    response.text.strip(),
+                    flags=re.DOTALL,
+                )
+                category_mapping = json.loads(clean_text)
 
-  # 3. Aggregate scores based on Master Categories
-  master_category_scores = {}
+            logger.info(f"Radar Chart Category Mapping: {category_mapping}")
 
-  for gv in evaluation.guideline_verdicts:
-    for verdict in gv.verdicts:
-      if verdict.category and verdict.verdict.lower() != "n/a":
-        score = 1.0 if verdict.verdict.lower() == verdict.gt_answer.lower(
-        ) else 0.0
-        master_cat = category_mapping.get(verdict.category)
+        except Exception as e:
+            logger.error(
+                f"Error grouping categories for radar chart: {e}. Falling back to raw categories."
+            )
 
-        if master_cat not in master_category_scores:
-          master_category_scores[master_cat] = []
-        master_category_scores[master_cat].append(score)
+    # 3. Aggregate scores based on Master Categories
+    master_category_scores = {}
 
-  if not master_category_scores:
-    return None
+    for gv in evaluation.guideline_verdicts:
+        for verdict in gv.verdicts:
+            if verdict.category and verdict.verdict.lower() != "n/a":
+                score = (
+                    1.0
+                    if verdict.verdict.lower() == verdict.gt_answer.lower()
+                    else 0.0
+                )
+                master_cat = category_mapping.get(verdict.category)
 
-  # Calculate mean scores for each label
-  labels = []
-  stats = []
+                if master_cat not in master_category_scores:
+                    master_category_scores[master_cat] = []
+                master_category_scores[master_cat].append(score)
 
-  for label, scores in master_category_scores.items():
-    labels.append(label)
-    stats.append(np.mean(scores))
+    if not master_category_scores:
+        return None
 
-  # 4. Plotting
-  num_vars = len(labels)
-  angles = np.linspace(0, 2 * np.pi, num_vars, endpoint=False).tolist()
+    # Calculate mean scores for each label
+    labels = []
+    stats = []
 
-  # Close the plot
-  stats += stats[:1]
-  angles += angles[:1]
+    for label, scores in master_category_scores.items():
+        labels.append(label)
+        stats.append(np.mean(scores))
 
-  # Increase figure size for better readability of labels
-  fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True))
+    # 4. Plotting
+    num_vars = len(labels)
+    angles = np.linspace(0, 2 * np.pi, num_vars, endpoint=False).tolist()
 
-  # Draw one axe per variable + labels
-  plt.xticks(angles[:-1], labels)
+    # Close the plot
+    stats += stats[:1]
+    angles += angles[:1]
 
-  # Plot data
-  ax.plot(angles, stats, color="blue", linewidth=2)
-  ax.fill(angles, stats, color="blue", alpha=0.25)
+    # Increase figure size for better readability of labels
+    fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True))
 
-  # Y-axis config
-  ax.set_ylim(0, 1.0)
-  ax.set_yticks([0.2, 0.4, 0.6, 0.8, 1.0])
-  ax.set_yticklabels(["0.2", "0.4", "0.6", "0.8", "1.0"], color="grey", size=7)
+    # Draw one axe per variable + labels
+    plt.xticks(angles[:-1], labels)
 
-  ax.set_title(f"Evaluation: {evaluation.asset_name}", va="bottom")
+    # Plot data
+    ax.plot(angles, stats, color="blue", linewidth=2)
+    ax.fill(angles, stats, color="blue", alpha=0.25)
 
-  buf = io.BytesIO()
-  plt.savefig(buf, format="png", bbox_inches="tight")
-  plt.close(fig)
-  buf.seek(0)
-  return buf.read()
+    # Y-axis config
+    ax.set_ylim(0, 1.0)
+    ax.set_yticks([0.2, 0.4, 0.6, 0.8, 1.0])
+    ax.set_yticklabels(
+        ["0.2", "0.4", "0.6", "0.8", "1.0"], color="grey", size=7
+    )
+
+    ax.set_title(f"Evaluation: {evaluation.asset_name}", va="bottom")
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png", bbox_inches="tight")
+    plt.close(fig)
+    buf.seek(0)
+    return buf.read()

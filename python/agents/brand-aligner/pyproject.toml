@@ -25,17 +25,19 @@ dev = [
   "ruff>=0.12.11",
   "pytest>=8.3.4",
   "pytest-asyncio>=0.25.3",
+  "flake8>=7.3.0",
 ]
 
 [tool.setuptools]
 packages = ["brand_aligner_agent", "deployment", "tests"]
 
 [tool.ruff]
-indent-width = 2
+extend = "../../../pyproject.toml"
+indent-width = 4
+line-length = 80
 
-[tool.lint]
-select = ["E", "F", "I", "D", "W"]
-ignore = []
+[tool.ruff.lint.isort]
+known-first-party = ["brand_aligner_agent"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
